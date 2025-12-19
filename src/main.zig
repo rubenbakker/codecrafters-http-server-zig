@@ -14,14 +14,17 @@ pub fn main() !void {
     defer listener.deinit();
 
     const client = try listener.accept();
-    std.debug.print("client connected!", .{});
+    std.debug.print("client connected!\n", .{});
 
-    const buf = try allocator.alloc(u8, 100);
-    const bytes_read = try client.stream.read(buf);
+    const request_buf = try allocator.alloc(u8, 512);
+    defer allocator.free(request_buf);
+    const bytes_read = try client.stream.read(request_buf);
+    var it = std.mem.splitAny(u8, request_buf[0..bytes_read], "\r\n");
+    if (it.next()) |line| {
+        const response = if (std.mem.startsWith(u8, line, "GET / ")) "HTTP/1.1 200 OK\r\n\r\n" else "HTTP/1.1 404 NotFound\r\n\r\n";
+        const bytes_written = try client.stream.write(response);
+        std.debug.print("bytes written {} {}", .{ bytes_read, bytes_written });
+    }
 
-    const http_200_ok = "HTTP/1.1 200 OK\r\n\r\n";
-    const bytes_written = try client.stream.write(http_200_ok);
     client.stream.close();
-
-    std.debug.print("bytes written {} {}", .{ bytes_read, bytes_written });
 }
