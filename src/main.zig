@@ -1,5 +1,6 @@
 const std = @import("std");
 const net = std.net;
+const request = @import("request.zig");
 
 pub fn main() !void {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -29,6 +30,8 @@ pub fn main() !void {
             "HTTP/1.1 200 OK\r\n\r\n"
         else if (std.mem.startsWith(u8, path, "/echo"))
             try echoResponse(arenaAllocator, path)
+        else if (std.mem.startsWith(u8, path, "/user-agent"))
+            try userAgentResponse(arenaAllocator, request_buf[0..bytes_read])
         else
             "HTTP/1.1 404 Not Found\r\n\r\n";
 
@@ -51,4 +54,14 @@ fn echoResponse(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
     const payload = path[prefix..];
     const payloadLength = payload.len;
     return try std.fmt.allocPrint(allocator, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {d}\r\n\r\n{s}\r\n", .{ payloadLength, payload });
+}
+
+fn userAgentResponse(allocator: std.mem.Allocator, requestString: []const u8) ![]const u8 {
+    const headers = try request.getHeaders(allocator, requestString);
+    const userAgent = headers.get("user-agent");
+    if (userAgent) |ua| {
+        return try std.fmt.allocPrint(allocator, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {d}\r\n\r\n{s}\r\n", .{ ua.len, ua });
+    } else {
+        return "HTTP/1.1 404 Not Found\r\n\r\n";
+    }
 }

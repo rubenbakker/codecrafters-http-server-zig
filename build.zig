@@ -10,6 +10,24 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    const test_step = b.step("test", "Run unit tests");
+
+    const unit_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/request.zig"),
+            .target = b.graph.host,
+        }),
+    });
+
+    const string = b.dependency("string", .{
+        .target = b.graph.host,
+    });
+    exe.root_module.addImport("string", string.module("string"));
+    unit_tests.root_module.addImport("string", string.module("string"));
+
+    const run_unit_tests = b.addRunArtifact(unit_tests);
+    test_step.dependOn(&run_unit_tests.step);
+
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).

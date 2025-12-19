@@ -45,6 +45,10 @@
         //    // actually used.
         //    .lazy = false,
         //},
+        .string = .{
+            .url = "https://github.com/JakubSzark/zig-string/archive/refs/heads/master.tar.gz",
+            .hash = "zig_string-0.10.0-6dpLWiqYAABQXLFx0hN20t4jyUobmRgL5RAJgDqWTGL4",
+        },
     },
 
     // Specifies the set of files and directories that are included in this package.
