@@ -21,7 +21,7 @@ pub fn main() !void {
     const bytes_read = try client.stream.read(request_buf);
     var it = std.mem.splitAny(u8, request_buf[0..bytes_read], "\r\n");
     if (it.next()) |line| {
-        const response = if (std.mem.startsWith(u8, line, "GET / ")) "HTTP/1.1 200 OK\r\n\r\n" else "HTTP/1.1 404 NotFound\r\n\r\n";
+        const response = if (std.mem.startsWith(u8, line, "GET / ")) "HTTP/1.1 200 OK\r\n\r\n" else "HTTP/1.1 404 Not Found\r\n\r\n";
         const bytes_written = try client.stream.write(response);
         std.debug.print("bytes written {} {}", .{ bytes_read, bytes_written });
     }
