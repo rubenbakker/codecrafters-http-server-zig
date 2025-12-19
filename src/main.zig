@@ -50,5 +50,5 @@ fn echoResponse(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
     const prefix = "/echo/".len;
     const payload = path[prefix..];
     const payloadLength = payload.len;
-    return try std.fmt.allocPrint(allocator, "HTTP/1.1 200 OK\r\n\r\nContent-Type: text/plain\r\nContent-Length: {d}\r\n\r\n{s}\r\n", .{ payloadLength, payload });
+    return try std.fmt.allocPrint(allocator, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {d}\r\n\r\n{s}\r\n", .{ payloadLength, payload });
 }
