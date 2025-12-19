@@ -20,11 +20,35 @@ pub fn main() !void {
     defer allocator.free(request_buf);
     const bytes_read = try client.stream.read(request_buf);
     var it = std.mem.splitAny(u8, request_buf[0..bytes_read], "\r\n");
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arenaAllocator = arena.allocator();
     if (it.next()) |line| {
-        const response = if (std.mem.startsWith(u8, line, "GET / ")) "HTTP/1.1 200 OK\r\n\r\n" else "HTTP/1.1 404 Not Found\r\n\r\n";
+        const path = getPath(line);
+        const response = if (std.mem.eql(u8, path, "/"))
+            "HTTP/1.1 200 OK\r\n\r\n"
+        else if (std.mem.startsWith(u8, path, "/echo"))
+            try echoResponse(arenaAllocator, path)
+        else
+            "HTTP/1.1 404 Not Found\r\n\r\n";
+
         const bytes_written = try client.stream.write(response);
         std.debug.print("bytes written {} {}", .{ bytes_read, bytes_written });
     }
 
     client.stream.close();
+}
+
+fn getPath(input: []const u8) []const u8 {
+    var it = std.mem.splitAny(u8, input, " ");
+    _ = it.next(); // method
+    if (it.next()) |word| return word;
+    return "";
+}
+
+fn echoResponse(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
+    const prefix = "/echo/".len;
+    const payload = path[prefix..];
+    const payloadLength = payload.len;
+    return try std.fmt.allocPrint(allocator, "HTTP/1.1 200 OK\r\n\r\nContent-Type: text/plain\r\nContent-Length: {d}\r\n\r\n{s}\r\n", .{ payloadLength, payload });
 }
