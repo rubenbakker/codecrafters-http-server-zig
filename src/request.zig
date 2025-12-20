@@ -3,6 +3,17 @@ const String = @import("string").String;
 
 const HeaderMap = std.StringHashMap([]const u8);
 
+pub const Request = struct { path: []const u8, headers: HeaderMap };
+
+pub fn parse(allocator: std.mem.Allocator, requestString: []const u8) !Request {
+    var it = std.mem.splitAny(u8, requestString, "\r\n");
+    var request: Request = .{ .path = "", .headers = try getHeaders(allocator, requestString) };
+    if (it.next()) |line| {
+        request.path = getPath(line);
+    }
+    return request;
+}
+
 pub fn getHeaders(allocator: std.mem.Allocator, request: []const u8) !HeaderMap {
     var headerMap = HeaderMap.init(allocator);
     var it = std.mem.splitAny(u8, request, "\n");

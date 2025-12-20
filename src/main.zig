@@ -30,27 +30,24 @@ fn clientLoop(client: std.net.Server.Connection) !void {
             std.debug.print("error reading from client\n", .{});
             break;
         };
-        var it = std.mem.splitAny(u8, request_buf[0..bytes_read], "\r\n");
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
         const arenaAllocator = arena.allocator();
-        if (it.next()) |line| {
-            const path = request.getPath(line);
-            const response = if (std.mem.eql(u8, path, "/"))
-                "HTTP/1.1 200 OK\r\n\r\n"
-            else if (std.mem.startsWith(u8, path, "/echo"))
-                try echoResponse(arenaAllocator, path)
-            else if (std.mem.startsWith(u8, path, "/user-agent"))
-                try userAgentResponse(arenaAllocator, request_buf[0..bytes_read])
-            else
-                "HTTP/1.1 404 Not Found\r\n\r\n";
+        const req = try request.parse(allocator, request_buf[0..bytes_read]);
+        const response = if (std.mem.eql(u8, req.path, "/"))
+            "HTTP/1.1 200 OK\r\n\r\n"
+        else if (std.mem.startsWith(u8, req.path, "/echo"))
+            try echoResponse(arenaAllocator, req.path)
+        else if (std.mem.startsWith(u8, req.path, "/user-agent"))
+            try userAgentResponse(arenaAllocator, req)
+        else
+            "HTTP/1.1 404 Not Found\r\n\r\n";
 
-            const bytes_written = client.stream.write(response) catch {
-                std.debug.print("error writing to client\n", .{});
-                break;
-            };
-            std.debug.print("bytes written {} {}", .{ bytes_read, bytes_written });
-        }
+        const bytes_written = client.stream.write(response) catch {
+            std.debug.print("error writing to client\n", .{});
+            break;
+        };
+        std.debug.print("bytes written {} {}\n", .{ bytes_read, bytes_written });
     }
     client.stream.close();
 }
@@ -62,9 +59,8 @@ fn echoResponse(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
     return try std.fmt.allocPrint(allocator, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {d}\r\n\r\n{s}\r\n", .{ payloadLength, payload });
 }
 
-fn userAgentResponse(allocator: std.mem.Allocator, requestString: []const u8) ![]const u8 {
-    const headers = try request.getHeaders(allocator, requestString);
-    const userAgent = headers.get("user-agent");
+fn userAgentResponse(allocator: std.mem.Allocator, req: request.Request) ![]const u8 {
+    const userAgent = req.headers.get("user-agent");
     if (userAgent) |ua| {
         return try std.fmt.allocPrint(allocator, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {d}\r\n\r\n{s}\r\n", .{ ua.len, ua });
     } else {
