@@ -97,7 +97,7 @@ fn writeFileResponse(allocator: std.mem.Allocator, req: Request, directory: ?[]c
             const file = try std.fs.cwd().createFile(path, .{});
             defer file.close();
             _ = try std.fs.File.writeAll(file, body);
-            return try "HTTP/1.1 201 Created\r\n\r\n";
+            return "HTTP/1.1 201 Created\r\n\r\n";
         } else {
             return "HTTP/1.1 400 Bad Request\r\n\r\n";
         }
