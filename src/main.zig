@@ -1,11 +1,21 @@
 const std = @import("std");
 const net = std.net;
-const request = @import("request.zig");
+const Request = @import("request.zig").Request;
 
 pub fn main() !void {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     std.debug.print("Logs from your program will appear here!\n", .{});
-
+    var argsIt = std.process.args();
+    var directory: ?[]const u8 = null;
+    if (argsIt.next()) |_| {
+        if (argsIt.next()) |arg| {
+            if (std.mem.eql(u8, "--directory", arg)) {
+                if (argsIt.next()) |dir| {
+                    directory = dir;
+                }
+            }
+        }
+    }
     const address = try net.Address.resolveIp("127.0.0.1", 4221);
     var listener = try address.listen(.{
         .reuse_address = true,
@@ -15,55 +25,65 @@ pub fn main() !void {
     while (true) {
         std.debug.print("client connected!\n", .{});
         const client = try listener.accept();
-        const thread = try std.Thread.spawn(.{}, clientLoop, .{client});
+        const thread = try std.Thread.spawn(.{}, clientLoop, .{ client, directory });
         thread.detach();
     }
 }
 
-fn clientLoop(client: std.net.Server.Connection) !void {
+fn clientLoop(client: std.net.Server.Connection, directory: ?[]const u8) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
     const request_buf = try allocator.alloc(u8, 512);
     defer allocator.free(request_buf);
-    while (true) {
-        const bytes_read = client.stream.read(request_buf) catch {
-            std.debug.print("error reading from client\n", .{});
-            break;
-        };
-        var arena = std.heap.ArenaAllocator.init(allocator);
-        defer arena.deinit();
-        const arenaAllocator = arena.allocator();
-        const req = try request.parse(allocator, request_buf[0..bytes_read]);
-        const response = if (std.mem.eql(u8, req.path, "/"))
-            "HTTP/1.1 200 OK\r\n\r\n"
-        else if (std.mem.startsWith(u8, req.path, "/echo"))
-            try echoResponse(arenaAllocator, req.path)
-        else if (std.mem.startsWith(u8, req.path, "/user-agent"))
-            try userAgentResponse(arenaAllocator, req)
-        else
-            "HTTP/1.1 404 Not Found\r\n\r\n";
+    const bytes_read = client.stream.read(request_buf) catch {
+        std.debug.print("error reading from client\n", .{});
+        return;
+    };
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arenaAllocator = arena.allocator();
+    const req = try Request.parse(allocator, request_buf[0..bytes_read]);
+    const response = if (req.startsWith("/"))
+        "HTTP/1.1 200 OK\r\n\r\n"
+    else if (req.startsWith("/echo"))
+        try echoResponse(arenaAllocator, req.path)
+    else if (req.startsWith("/user-agent"))
+        try userAgentResponse(arenaAllocator, req)
+    else if (req.startsWith("/files")) try fileResponse(arenaAllocator, req, directory) else "HTTP/1.1 404 Not Found\r\n\r\n";
 
-        const bytes_written = client.stream.write(response) catch {
-            std.debug.print("error writing to client\n", .{});
-            break;
-        };
-        std.debug.print("bytes written {} {}\n", .{ bytes_read, bytes_written });
-    }
+    _ = client.stream.write(response) catch {
+        std.debug.print("error writing to client\n", .{});
+    };
     client.stream.close();
 }
 
 fn echoResponse(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
     const prefix = "/echo/".len;
     const payload = path[prefix..];
-    const payloadLength = payload.len;
-    return try std.fmt.allocPrint(allocator, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {d}\r\n\r\n{s}\r\n", .{ payloadLength, payload });
+    return try std.fmt.allocPrint(allocator, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {d}\r\n\r\n{s}\r\n", .{ payload.len, payload });
 }
 
-fn userAgentResponse(allocator: std.mem.Allocator, req: request.Request) ![]const u8 {
+fn userAgentResponse(allocator: std.mem.Allocator, req: Request) ![]const u8 {
     const userAgent = req.headers.get("user-agent");
     if (userAgent) |ua| {
         return try std.fmt.allocPrint(allocator, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {d}\r\n\r\n{s}\r\n", .{ ua.len, ua });
     } else {
         return "HTTP/1.1 404 Not Found\r\n\r\n";
     }
+}
+
+fn fileResponse(allocator: std.mem.Allocator, req: Request, directory: ?[]const u8) ![]const u8 {
+    const prefix = "/files/".len;
+    const filename = req.path[prefix..];
+    std.debug.print(">>> file: {s} -- {s}", .{ directory.?, filename });
+    if (directory) |dir| {
+        const path = try std.fs.path.join(allocator, &[_][]const u8{ dir, filename });
+        std.fs.accessAbsolute(path, .{ .mode = .read_only }) catch {
+            return "HTTP/1.1 404 Not Found\r\n\r\n";
+        };
+        const file = try std.fs.cwd().openFile(path, .{ .mode = .read_only });
+        defer file.close();
+        const content = try std.fs.File.readToEndAlloc(file, allocator, 99999999);
+        return try std.fmt.allocPrint(allocator, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {d}\r\n\r\n{s}\r\n", .{ content.len, content });
+    } else return "HTTP/1.1 404 Not Found\r\n\r\n";
 }

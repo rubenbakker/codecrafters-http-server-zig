@@ -3,18 +3,27 @@ const String = @import("string").String;
 
 const HeaderMap = std.StringHashMap([]const u8);
 
-pub const Request = struct { path: []const u8, headers: HeaderMap };
+pub const Request = struct {
+    path: []const u8,
+    headers: HeaderMap,
 
-pub fn parse(allocator: std.mem.Allocator, requestString: []const u8) !Request {
-    var it = std.mem.splitAny(u8, requestString, "\r\n");
-    var request: Request = .{ .path = "", .headers = try getHeaders(allocator, requestString) };
-    if (it.next()) |line| {
-        request.path = getPath(line);
+    const Self = @This();
+
+    pub fn startsWith(self: Self, needle: []const u8) bool {
+        return std.mem.startsWith(u8, self.path, needle);
     }
-    return request;
-}
 
-pub fn getHeaders(allocator: std.mem.Allocator, request: []const u8) !HeaderMap {
+    pub fn parse(allocator: std.mem.Allocator, requestString: []const u8) !Request {
+        var it = std.mem.splitAny(u8, requestString, "\r\n");
+        var request: Request = .{ .path = "", .headers = try getHeaders(allocator, requestString) };
+        if (it.next()) |line| {
+            request.path = getPath(line);
+        }
+        return request;
+    }
+};
+
+fn getHeaders(allocator: std.mem.Allocator, request: []const u8) !HeaderMap {
     var headerMap = HeaderMap.init(allocator);
     var it = std.mem.splitAny(u8, request, "\n");
     _ = it.next(); // skip header
@@ -39,7 +48,7 @@ pub fn getHeaders(allocator: std.mem.Allocator, request: []const u8) !HeaderMap 
     return headerMap;
 }
 
-pub fn getPath(input: []const u8) []const u8 {
+fn getPath(input: []const u8) []const u8 {
     var it = std.mem.splitAny(u8, input, " ");
     _ = it.next(); // method
     if (it.next()) |word| return word;
