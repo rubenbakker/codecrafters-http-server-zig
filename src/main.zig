@@ -45,7 +45,10 @@ fn clientLoop(client: std.net.Server.Connection) !void {
             else
                 "HTTP/1.1 404 Not Found\r\n\r\n";
 
-            const bytes_written = try client.stream.write(response);
+            const bytes_written = client.stream.write(response) catch {
+                std.debug.print("error writing to client\n", .{});
+                break;
+            };
             std.debug.print("bytes written {} {}", .{ bytes_read, bytes_written });
         }
     }
