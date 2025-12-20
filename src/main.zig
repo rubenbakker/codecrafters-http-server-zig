@@ -4,8 +4,6 @@ const request = @import("request.zig");
 
 pub fn main() !void {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
     std.debug.print("Logs from your program will appear here!\n", .{});
 
     const address = try net.Address.resolveIp("127.0.0.1", 4221);
@@ -14,39 +12,41 @@ pub fn main() !void {
     });
     defer listener.deinit();
 
-    const client = try listener.accept();
-    std.debug.print("client connected!\n", .{});
-
-    const request_buf = try allocator.alloc(u8, 512);
-    defer allocator.free(request_buf);
-    const bytes_read = try client.stream.read(request_buf);
-    var it = std.mem.splitAny(u8, request_buf[0..bytes_read], "\r\n");
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    const arenaAllocator = arena.allocator();
-    if (it.next()) |line| {
-        const path = getPath(line);
-        const response = if (std.mem.eql(u8, path, "/"))
-            "HTTP/1.1 200 OK\r\n\r\n"
-        else if (std.mem.startsWith(u8, path, "/echo"))
-            try echoResponse(arenaAllocator, path)
-        else if (std.mem.startsWith(u8, path, "/user-agent"))
-            try userAgentResponse(arenaAllocator, request_buf[0..bytes_read])
-        else
-            "HTTP/1.1 404 Not Found\r\n\r\n";
-
-        const bytes_written = try client.stream.write(response);
-        std.debug.print("bytes written {} {}", .{ bytes_read, bytes_written });
+    while (true) {
+        std.debug.print("client connected!\n", .{});
+        const client = try listener.accept();
+        const thread = try std.Thread.spawn(.{}, clientLoop, .{client});
+        thread.detach();
     }
-
-    client.stream.close();
 }
 
-fn getPath(input: []const u8) []const u8 {
-    var it = std.mem.splitAny(u8, input, " ");
-    _ = it.next(); // method
-    if (it.next()) |word| return word;
-    return "";
+fn clientLoop(client: std.net.Server.Connection) !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    const request_buf = try allocator.alloc(u8, 512);
+    defer allocator.free(request_buf);
+    while (true) {
+        const bytes_read = try client.stream.read(request_buf);
+        var it = std.mem.splitAny(u8, request_buf[0..bytes_read], "\r\n");
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+        const arenaAllocator = arena.allocator();
+        if (it.next()) |line| {
+            const path = request.getPath(line);
+            const response = if (std.mem.eql(u8, path, "/"))
+                "HTTP/1.1 200 OK\r\n\r\n"
+            else if (std.mem.startsWith(u8, path, "/echo"))
+                try echoResponse(arenaAllocator, path)
+            else if (std.mem.startsWith(u8, path, "/user-agent"))
+                try userAgentResponse(arenaAllocator, request_buf[0..bytes_read])
+            else
+                "HTTP/1.1 404 Not Found\r\n\r\n";
+
+            const bytes_written = try client.stream.write(response);
+            std.debug.print("bytes written {} {}", .{ bytes_read, bytes_written });
+        }
+    }
+    client.stream.close();
 }
 
 fn echoResponse(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {

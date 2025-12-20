@@ -28,6 +28,13 @@ pub fn getHeaders(allocator: std.mem.Allocator, request: []const u8) !HeaderMap 
     return headerMap;
 }
 
+pub fn getPath(input: []const u8) []const u8 {
+    var it = std.mem.splitAny(u8, input, " ");
+    _ = it.next(); // method
+    if (it.next()) |word| return word;
+    return "";
+}
+
 test "getHeaders" {
     const request = "GET /user-agent HTTP/1.1\r\nHost: localhost:4221\r\nUser-Agent: foobar/1.2.3\r\nAccept: */*\r\n\r\n";
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
