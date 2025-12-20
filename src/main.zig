@@ -26,7 +26,10 @@ fn clientLoop(client: std.net.Server.Connection) !void {
     const request_buf = try allocator.alloc(u8, 512);
     defer allocator.free(request_buf);
     while (true) {
-        const bytes_read = try client.stream.read(request_buf);
+        const bytes_read = client.stream.read(request_buf) catch {
+            std.debug.print("error reading from client\n", .{});
+            break;
+        };
         var it = std.mem.splitAny(u8, request_buf[0..bytes_read], "\r\n");
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
