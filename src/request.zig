@@ -13,6 +13,10 @@ pub const Request = struct {
         return std.mem.startsWith(u8, self.path, needle);
     }
 
+    pub fn equals(self: Self, needle: []const u8) bool {
+        return std.mem.eql(u8, self.path, needle);
+    }
+
     pub fn parse(allocator: std.mem.Allocator, requestString: []const u8) !Request {
         var it = std.mem.splitAny(u8, requestString, "\r\n");
         var request: Request = .{ .path = "", .headers = try getHeaders(allocator, requestString) };

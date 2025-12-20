@@ -43,13 +43,13 @@ fn clientLoop(client: std.net.Server.Connection, directory: ?[]const u8) !void {
     defer arena.deinit();
     const arenaAllocator = arena.allocator();
     const req = try Request.parse(allocator, request_buf[0..bytes_read]);
-    const response = if (req.startsWith("/"))
+    const response = if (req.equals("/"))
         "HTTP/1.1 200 OK\r\n\r\n"
-    else if (req.startsWith("/echo"))
+    else if (req.startsWith("/echo/"))
         try echoResponse(arenaAllocator, req.path)
     else if (req.startsWith("/user-agent"))
         try userAgentResponse(arenaAllocator, req)
-    else if (req.startsWith("/files")) try fileResponse(arenaAllocator, req, directory) else "HTTP/1.1 404 Not Found\r\n\r\n";
+    else if (req.startsWith("/files/")) try fileResponse(arenaAllocator, req, directory) else "HTTP/1.1 404 Not Found\r\n\r\n";
 
     _ = client.stream.write(response) catch {
         std.debug.print("error writing to client\n", .{});
