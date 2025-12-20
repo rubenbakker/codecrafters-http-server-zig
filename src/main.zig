@@ -1,6 +1,7 @@
 const std = @import("std");
 const net = std.net;
 const Request = @import("request.zig").Request;
+const Method = @import("request.zig").Method;
 
 pub fn main() !void {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -43,13 +44,13 @@ fn clientLoop(client: std.net.Server.Connection, directory: ?[]const u8) !void {
     defer arena.deinit();
     const arenaAllocator = arena.allocator();
     const req = try Request.parse(allocator, request_buf[0..bytes_read]);
-    const response = if (req.equals("/"))
+    const response = if (req.equals(Method.GET, "/"))
         "HTTP/1.1 200 OK\r\n\r\n"
-    else if (req.startsWith("/echo/"))
+    else if (req.startsWith(Method.GET, "/echo/"))
         try echoResponse(arenaAllocator, req.path)
-    else if (req.startsWith("/user-agent"))
+    else if (req.startsWith(Method.GET, "/user-agent"))
         try userAgentResponse(arenaAllocator, req)
-    else if (req.startsWith("/files/")) try fileResponse(arenaAllocator, req, directory) else "HTTP/1.1 404 Not Found\r\n\r\n";
+    else if (req.startsWith(Method.GET, "/files/")) try fileResponse(arenaAllocator, req, directory) else if (req.startsWith(Method.POST, "/files/")) try writeFileResponse(arenaAllocator, req, directory) else "HTTP/1.1 404 Not Found\r\n\r\n";
 
     _ = client.stream.write(response) catch {
         std.debug.print("error writing to client\n", .{});
@@ -75,7 +76,6 @@ fn userAgentResponse(allocator: std.mem.Allocator, req: Request) ![]const u8 {
 fn fileResponse(allocator: std.mem.Allocator, req: Request, directory: ?[]const u8) ![]const u8 {
     const prefix = "/files/".len;
     const filename = req.path[prefix..];
-    std.debug.print(">>> file: {s} -- {s}", .{ directory.?, filename });
     if (directory) |dir| {
         const path = try std.fs.path.join(allocator, &[_][]const u8{ dir, filename });
         std.fs.accessAbsolute(path, .{ .mode = .read_only }) catch {
@@ -85,5 +85,21 @@ fn fileResponse(allocator: std.mem.Allocator, req: Request, directory: ?[]const 
         defer file.close();
         const content = try std.fs.File.readToEndAlloc(file, allocator, 99999999);
         return try std.fmt.allocPrint(allocator, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {d}\r\n\r\n{s}\r\n", .{ content.len, content });
+    } else return "HTTP/1.1 404 Not Found\r\n\r\n";
+}
+
+fn writeFileResponse(allocator: std.mem.Allocator, req: Request, directory: ?[]const u8) ![]const u8 {
+    const prefix = "/files/".len;
+    const filename = req.path[prefix..];
+    if (directory) |dir| {
+        if (req.body) |body| {
+            const path = try std.fs.path.join(allocator, &[_][]const u8{ dir, filename });
+            const file = try std.fs.cwd().openFile(path, .{ .mode = .read_write });
+            defer file.close();
+            _ = try std.fs.File.writeAll(file, body);
+            return try std.fmt.allocPrint(allocator, "HTTP/1.1 201 Created", .{});
+        } else {
+            return "HTTP/1.1 400 Bad Request\r\n\r\n";
+        }
     } else return "HTTP/1.1 404 Not Found\r\n\r\n";
 }

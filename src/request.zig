@@ -3,27 +3,27 @@ const String = @import("string").String;
 
 const HeaderMap = std.StringHashMap([]const u8);
 
+pub const Method = enum { GET, POST, PUT, PATCH, DELETE };
+
 pub const Request = struct {
+    method: Method,
     path: []const u8,
     headers: HeaderMap,
+    body: ?[]const u8,
 
     const Self = @This();
 
-    pub fn startsWith(self: Self, needle: []const u8) bool {
-        return std.mem.startsWith(u8, self.path, needle);
+    pub fn startsWith(self: Self, method: Method, needle: []const u8) bool {
+        return self.method == method and std.mem.startsWith(u8, self.path, needle);
     }
 
-    pub fn equals(self: Self, needle: []const u8) bool {
-        return std.mem.eql(u8, self.path, needle);
+    pub fn equals(self: Self, method: Method, needle: []const u8) bool {
+        return self.method == method and std.mem.eql(u8, self.path, needle);
     }
 
     pub fn parse(allocator: std.mem.Allocator, requestString: []const u8) !Request {
-        var it = std.mem.splitAny(u8, requestString, "\r\n");
-        var request: Request = .{ .path = "", .headers = try getHeaders(allocator, requestString) };
-        if (it.next()) |line| {
-            request.path = getPath(line);
-        }
-        return request;
+        const headers = try getHeaders(allocator, requestString);
+        return .{ .method = getMethod(requestString), .path = getPath(requestString), .headers = headers, .body = try getBody(headers, requestString) };
     }
 };
 
@@ -54,9 +54,24 @@ fn getHeaders(allocator: std.mem.Allocator, request: []const u8) !HeaderMap {
 
 fn getPath(input: []const u8) []const u8 {
     var it = std.mem.splitAny(u8, input, " ");
-    _ = it.next(); // method
-    if (it.next()) |word| return word;
-    return "";
+    _ = it.next();
+    return if (it.next()) |path| path else "";
+}
+
+fn getMethod(input: []const u8) Method {
+    var it = std.mem.splitAny(u8, input, " ");
+    return if (it.next()) |method| std.meta.stringToEnum(Method, method) orelse Method.GET else Method.GET;
+}
+
+fn getBody(headers: HeaderMap, input: []const u8) !?[]const u8 {
+    if (headers.get("content-length")) |contentLengthString| {
+        const contentLength = try std.fmt.parseInt(usize, contentLengthString, 10);
+        const fromIdx = input.len - contentLength;
+        if (fromIdx > 0) {
+            return input[fromIdx..];
+        }
+    }
+    return null;
 }
 
 test "getHeaders" {
