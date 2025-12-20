@@ -24,8 +24,8 @@ pub fn main() !void {
     defer listener.deinit();
 
     while (true) {
-        std.debug.print("client connected!\n", .{});
         const client = try listener.accept();
+        std.debug.print("client connected!\n", .{});
         const thread = try std.Thread.spawn(.{}, clientLoop, .{ client, directory });
         thread.detach();
     }
@@ -94,7 +94,7 @@ fn writeFileResponse(allocator: std.mem.Allocator, req: Request, directory: ?[]c
     if (directory) |dir| {
         if (req.body) |body| {
             const path = try std.fs.path.join(allocator, &[_][]const u8{ dir, filename });
-            const file = try std.fs.cwd().openFile(path, .{ .mode = .read_write });
+            const file = try std.fs.cwd().createFile(path, .{});
             defer file.close();
             _ = try std.fs.File.writeAll(file, body);
             return try std.fmt.allocPrint(allocator, "HTTP/1.1 201 Created", .{});
