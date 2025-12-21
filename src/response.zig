@@ -68,9 +68,6 @@ pub const Respond = struct {
             try writer.flush();
             len = writer.end;
             content1 = compressed[0..writer.end];
-            const dest = try allocator.alloc(u8, 1024);
-            const base64 = std.base64.standard_no_pad.Encoder.encode(dest, content1);
-            std.debug.print("compressed: {s}", .{base64});
         }
         try addHeader(stream, "Content-Type", contentType);
         try addHeader(stream, "Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{len}));
@@ -78,24 +75,3 @@ pub const Respond = struct {
         _ = try stream.write(content1);
     }
 };
-
-// const CompressionResult = struct { len: usize, content: []const u8 };
-
-//     fn gzipString(content: []const u8) !CompressionResult {
-//         var compressed_buffer: [1024]u8 = undefined;
-//         var fixed_writer = std.Io.Writer.fixed(&compressed_buffer);
-//
-//         var input_buffer: [1024]u8 = undefined;
-//         @memcpy(input_buffer[0..content.len], content);
-//         var input_reader = std.Io.Reader.fixed(input_buffer[0..content.len]);
-//
-//         try gzip.compress(&input_reader, &fixed_writer, .{});
-//
-//         // Find the end of compressed data by checking for non-zero bytes
-//         var written: usize = 0;
-//         for (compressed_buffer, 0..) |byte, i| {
-//             if (byte != 0) written = i + 1;
-//         }
-//         return .{ .len = written, .content = compressed_buffer[0..written] };
-//     }
-// };
