@@ -1,0 +1,57 @@
+const std = @import("std");
+
+const HeaderMap = std.StringHashMap([]const u8);
+
+const StatusCode = enum(u32) {
+    Ok = 200,
+    Created = 201,
+    BadRequest = 400,
+    NotFound = 404,
+
+    const Self = @This();
+
+    fn toString(self: Self) []const u8 {
+        return switch (self) {
+            Self.Ok => "OK",
+            Self.Created => "Created",
+            Self.BadRequest => "Bad Request",
+            Self.NotFound => "Not Found",
+        };
+    }
+};
+
+pub const Respond = struct {
+    pub fn ok(stream: std.net.Stream) !void {
+        try onlyStatusCode(stream, StatusCode.Ok);
+    }
+
+    pub fn notFound(stream: std.net.Stream) !void {
+        try onlyStatusCode(stream, StatusCode.NotFound);
+    }
+
+    fn onlyStatusCode(stream: std.net.Stream, code: StatusCode) !void {
+        try statusCode(stream, code);
+        try stream.write("\r\n");
+    }
+
+    pub fn statusCode(stream: std.net.Stream, code: StatusCode) !void {
+        try stream.write(std.fmt.comptimePrint("HTTP/1.1 {d} {s}\r\n", .{ code, code.toString() }));
+    }
+
+    pub fn addHeader(stream: std.net.Stream, name: []const u8, value: []const u8) !void {
+        try stream.write(name);
+        try stream.write(": ");
+        try stream.write(value);
+        try stream.write("\r\n");
+    }
+
+    pub fn finishHeaders(stream: std.net.Stream) !void {
+        try stream.write("\r\n");
+    }
+
+    pub fn addBody(allocator: std.Allocator, stream: std.net.Stream, content: []const u8) !void {
+        addHeader(stream, "Content-Length", std.fmt.allocPrint(allocator, "{d}", content.len));
+        try stream.write("\r\n");
+        try stream.write(content);
+    }
+};
