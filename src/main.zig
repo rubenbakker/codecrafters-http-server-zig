@@ -52,7 +52,7 @@ fn clientLoop(client: std.net.Server.Connection, directory: ?[]const u8) !void {
             try echoResponse(arenaAllocator, req, stream)
         else if (req.startsWith(Method.GET, "/user-agent"))
             try userAgentResponse(arenaAllocator, req, stream)
-        else if (req.startsWith(Method.GET, "/files/")) try fileResponse(arenaAllocator, req, directory, stream) else if (req.startsWith(Method.POST, "/files/")) try writeFileResponse(arenaAllocator, req, directory, stream) else try Respond.notFound(allocator, stream);
+        else if (req.startsWith(Method.GET, "/files/")) try fileResponse(arenaAllocator, req, directory, stream) else if (req.startsWith(Method.POST, "/files/")) try writeFileResponse(arenaAllocator, req, directory, stream) else Respond.notFound(allocator, stream) catch {};
         if (req.headers.get("connection")) |value| {
             if (std.mem.eql(u8, "close", value)) {
                 std.debug.print("{s}", .{value});
