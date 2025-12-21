@@ -1547,17 +1547,19 @@ pub fn Deflate(comptime container: Container) type {
                     continue;
                 }
                 // Read up to buffer size, limiting to avoid buffer overflow
-                const read_size = @min(buf.len, 4096);
+                const read_size = @min(reader.buffer.len, 4096);
                 const slice = reader.take(read_size) catch |err| switch (err) {
                     error.EndOfStream => break,
                     error.ReadFailed => return error.ReadFailed,
                 };
+                std.debug.print("read: {d} {s}\n", .{ slice.len, slice });
                 @memcpy(buf[0..slice.len], slice);
                 self.hasher.update(buf[0..slice.len]);
                 self.win.written(slice.len);
                 try self.tokenize(.none);
                 if (slice.len < read_size) break;
             }
+            std.debug.print("read - end of loop\n", .{});
         }
 
         pub fn flush(self: *Self) !void {

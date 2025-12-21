@@ -61,13 +61,16 @@ pub const Respond = struct {
         var len = content.len;
         if (gzipEncode) {
             try addHeader(stream, "Content-Encoding", "gzip");
-            var compressed_buffer: []const u8 = allocator.alloc(u8, 1024);
-            var input_reader = std.Io.Reader.fixed(content);
-            var fixed_writer = std.Io.Writer.fixed(&compressed_buffer);
-            try gzip.compress(&input_reader, &fixed_writer, .{});
-            try fixed_writer.flush();
-            len = fixed_writer.end;
-            content1 = &compressed_buffer;
+            const compressed = try allocator.alloc(u8, 8192);
+            var reader = std.Io.Reader.fixed(content);
+            var writer = std.Io.Writer.fixed(compressed);
+            try gzip.compress(&reader, &writer, .{});
+            try writer.flush();
+            len = writer.end;
+            content1 = compressed[0..writer.end];
+            const dest = try allocator.alloc(u8, 1024);
+            const base64 = std.base64.standard_no_pad.Encoder.encode(dest, content1);
+            std.debug.print("compressed: {s}", .{base64});
         }
         try addHeader(stream, "Content-Type", contentType);
         try addHeader(stream, "Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{len}));
