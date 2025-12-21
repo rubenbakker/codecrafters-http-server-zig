@@ -61,7 +61,7 @@ pub const Respond = struct {
         var len = content.len;
         if (gzipEncode) {
             try addHeader(stream, "Content-Encoding", "gzip");
-            var compressed_buffer: [1024]u8 = undefined;
+            var compressed_buffer: []const u8 = allocator.alloc(u8, 1024);
             var input_reader = std.Io.Reader.fixed(content);
             var fixed_writer = std.Io.Writer.fixed(&compressed_buffer);
             try gzip.compress(&input_reader, &fixed_writer, .{});
