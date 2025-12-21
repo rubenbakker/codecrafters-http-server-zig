@@ -53,7 +53,6 @@ fn getHeaders(allocator: std.mem.Allocator, request: []const u8) !HeaderMap {
                 value = std.mem.trim(u8, v, " ");
             }
         }
-        std.debug.print("key: {s}, value: {s}\n", .{ key, value });
         try headerMap.put(key, value);
     }
     return headerMap;

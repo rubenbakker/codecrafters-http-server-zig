@@ -26,7 +26,6 @@ pub fn main() !void {
 
     while (true) {
         const client = try listener.accept();
-        std.debug.print("client connected!\n", .{});
         const thread = try std.Thread.spawn(.{}, clientLoop, .{ client, directory });
         thread.detach();
     }
@@ -40,7 +39,7 @@ fn clientLoop(client: std.net.Server.Connection, directory: ?[]const u8) !void {
     const stream = client.stream;
     while (true) {
         const bytes_read = stream.read(request_buf) catch {
-            std.debug.print("error reading from client\n", .{});
+            std.debug.print("[ERROR] error reading from client\n", .{});
             break;
         };
         var arena = std.heap.ArenaAllocator.init(allocator);
