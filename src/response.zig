@@ -94,6 +94,10 @@ pub const ResponseBuilder = struct {
         if (self.body) |body| {
             var content1 = body;
             var len = content1.len;
+            {
+                const header: Header = .{ .name = HeaderName.ContentType, .value = self.contentType orelse "text/plain" };
+                try header.writeToStream(stream);
+            }
             if (self.gzip) {
                 const header: Header = .{ .name = HeaderName.ContentEncoding, .value = "gzip" };
                 try header.writeToStream(stream);
