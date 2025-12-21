@@ -19,59 +19,98 @@ pub const StatusCode = enum(u32) {
     }
 };
 
-pub const Respond = struct {
-    pub fn ok(allocator: std.mem.Allocator, stream: std.net.Stream) !void {
-        try onlyStatusCode(allocator, stream, StatusCode.Ok);
-    }
+pub const HeaderName = enum {
+    ContentType,
+    ContentLength,
+    ContentEncoding,
+    Connection,
 
-    pub fn created(allocator: std.mem.Allocator, stream: std.net.Stream) !void {
-        try onlyStatusCode(allocator, stream, StatusCode.Created);
-    }
+    const Self = @This();
 
-    pub fn badRequest(allocator: std.mem.Allocator, stream: std.net.Stream) !void {
-        try onlyStatusCode(allocator, stream, StatusCode.BadRequest);
+    pub fn toString(self: Self) []const u8 {
+        return switch (self) {
+            Self.ContentType => "Content-Type",
+            Self.ContentLength => "Context-Length",
+            Self.ContentEncoding => "Content-Encoding",
+            Self.Connection => "Connection",
+        };
     }
+};
 
-    pub fn notFound(allocator: std.mem.Allocator, stream: std.net.Stream) !void {
-        try onlyStatusCode(allocator, stream, StatusCode.NotFound);
-    }
+const Header = struct {
+    name: HeaderName,
+    value: []const u8,
 
-    fn onlyStatusCode(allocator: std.mem.Allocator, stream: std.net.Stream, code: StatusCode) !void {
-        _ = try statusCode(allocator, stream, code);
-        _ = try stream.write("\r\n");
-    }
+    const Self = @This();
 
-    pub fn statusCode(allocator: std.mem.Allocator, stream: std.net.Stream, code: StatusCode) !void {
-        _ = try stream.write(try std.fmt.allocPrint(allocator, "HTTP/1.1 {d} {s}\r\n", .{ code, code.toString() }));
-    }
-
-    pub fn addHeader(stream: std.net.Stream, name: []const u8, value: []const u8) !void {
-        _ = try stream.write(name);
+    pub fn writeToStream(self: Self, stream: std.net.Stream) !void {
+        _ = try stream.write(self.name.toString());
         _ = try stream.write(": ");
-        _ = try stream.write(value);
+        _ = try stream.write(self.value);
         _ = try stream.write("\r\n");
     }
+};
 
-    pub fn finishHeaders(stream: std.net.Stream) !void {
-        _ = try stream.write("\r\n");
+const HeaderList = std.ArrayList(Header);
+
+pub const ResponseBuilder = struct {
+    allocator: std.mem.Allocator,
+    statusCode: StatusCode,
+    headers: ?HeaderList,
+    gzip: bool,
+    contentType: ?[]const u8,
+    body: ?[]const u8,
+
+    const Self = @This();
+
+    pub fn init(allocator: std.mem.Allocator, statusCode: StatusCode) Self {
+        return .{ .allocator = allocator, .statusCode = statusCode, .headers = null, .body = null, .gzip = false, .contentType = null };
     }
 
-    pub fn addBody(allocator: std.mem.Allocator, stream: std.net.Stream, gzipEncode: bool, contentType: []const u8, content: []const u8) !void {
-        var content1 = content;
-        var len = content.len;
-        if (gzipEncode) {
-            try addHeader(stream, "Content-Encoding", "gzip");
-            const compressed = try allocator.alloc(u8, 8192);
-            var reader = std.Io.Reader.fixed(content);
-            var writer = std.Io.Writer.fixed(compressed);
-            try gzip.compress(&reader, &writer, .{});
-            try writer.flush();
-            len = writer.end;
-            content1 = compressed[0..writer.end];
+    pub fn addHeader(self: *Self, name: HeaderName, value: []const u8) !void {
+        if (self.headers == null) {
+            self.headers = try HeaderList.initCapacity(self.allocator, 10);
         }
-        try addHeader(stream, "Content-Type", contentType);
-        try addHeader(stream, "Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{len}));
-        _ = try stream.write("\r\n");
-        _ = try stream.write(content1);
+        if (self.headers) |_| {
+            const header: Header = .{ .name = name, .value = value };
+            try self.headers.?.append(self.allocator, header);
+        }
+    }
+
+    pub fn setBody(self: *Self, body: []const u8, contentType: []const u8, gzipContent: bool) void {
+        self.body = body;
+        self.contentType = contentType;
+        self.gzip = gzipContent;
+    }
+
+    pub fn writeToStream(self: Self, stream: std.net.Stream) !void {
+        const code = self.statusCode;
+        _ = try stream.write(try std.fmt.allocPrint(self.allocator, "HTTP/1.1 {d} {s}\r\n", .{ code, code.toString() }));
+        if (self.headers) |headers| {
+            for (headers.items) |header| {
+                try header.writeToStream(stream);
+            }
+        }
+        if (self.body) |body| {
+            var content1 = body;
+            var len = content1.len;
+            if (self.gzip) {
+                const header: Header = .{ .name = HeaderName.ContentEncoding, .value = "gzip" };
+                try header.writeToStream(stream);
+                const compressed = try self.allocator.alloc(u8, 8192);
+                var reader = std.Io.Reader.fixed(body);
+                var writer = std.Io.Writer.fixed(compressed);
+                try gzip.compress(&reader, &writer, .{});
+                try writer.flush();
+                len = writer.end;
+                content1 = compressed[0..writer.end];
+            }
+            const header: Header = .{ .name = HeaderName.ContentLength, .value = try std.fmt.allocPrint(self.allocator, "{d}", .{len}) };
+            try header.writeToStream(stream);
+            _ = try stream.write("\r\n");
+            _ = try stream.write(content1);
+        } else {
+            _ = try stream.write("\r\n");
+        }
     }
 };

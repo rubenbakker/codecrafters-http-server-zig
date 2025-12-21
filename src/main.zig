@@ -2,12 +2,11 @@ const std = @import("std");
 const net = std.net;
 const Request = @import("request.zig").Request;
 const Method = @import("request.zig").Method;
-const Respond = @import("response.zig").Respond;
+const ResponseBuilder = @import("response.zig").ResponseBuilder;
 const StatusCode = @import("response.zig").StatusCode;
+const HeaderName = @import("response.zig").HeaderName;
 
 pub fn main() !void {
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
-    std.debug.print("Logs from your program will appear here!\n", .{});
     var argsIt = std.process.args();
     var directory: ?[]const u8 = null;
     if (argsIt.next()) |_| {
@@ -48,55 +47,70 @@ fn clientLoop(client: std.net.Server.Connection, directory: ?[]const u8) !void {
         defer arena.deinit();
         const arenaAllocator = arena.allocator();
         const req = try Request.parse(allocator, request_buf[0..bytes_read]);
-        if (req.equals(Method.GET, "/")) try Respond.ok(allocator, stream) else if (req.startsWith(Method.GET, "/echo/"))
-            try echoResponse(arenaAllocator, req, stream)
-        else if (req.startsWith(Method.GET, "/user-agent"))
-            try userAgentResponse(arenaAllocator, req, stream)
-        else if (req.startsWith(Method.GET, "/files/")) try fileResponse(arenaAllocator, req, directory, stream) else if (req.startsWith(Method.POST, "/files/")) try writeFileResponse(arenaAllocator, req, directory, stream) else Respond.notFound(allocator, stream) catch {};
+        var responseBuilder = ResponseBuilder.init(allocator, StatusCode.NotFound);
+        if (req.equals(Method.GET, "/")) {
+            responseBuilder = ResponseBuilder.init(allocator, StatusCode.Ok);
+        } else if (req.startsWith(Method.GET, "/echo/")) {
+            responseBuilder = try echoResponse(arenaAllocator, req);
+        } else if (req.startsWith(Method.GET, "/user-agent")) {
+            responseBuilder = try userAgentResponse(arenaAllocator, req);
+        } else if (req.startsWith(Method.GET, "/files/")) {
+            responseBuilder = try fileResponse(arenaAllocator, req, directory);
+        } else if (req.startsWith(Method.POST, "/files/")) {
+            responseBuilder = try writeFileResponse(arenaAllocator, req, directory);
+        }
+        var closeConnection = false;
         if (req.headers.get("connection")) |value| {
             if (std.mem.eql(u8, "close", value)) {
-                std.debug.print("{s}", .{value});
-                break;
+                try responseBuilder.addHeader(HeaderName.Connection, "close");
+                closeConnection = true;
             }
+        }
+        try responseBuilder.writeToStream(stream);
+        if (closeConnection) {
+            break;
         }
     }
     stream.close();
 }
 
-fn echoResponse(allocator: std.mem.Allocator, req: Request, stream: std.net.Stream) !void {
+fn echoResponse(allocator: std.mem.Allocator, req: Request) !ResponseBuilder {
     const prefix = "/echo/".len;
     const payload = req.path[prefix..];
-    try Respond.statusCode(allocator, stream, StatusCode.Ok);
-    try Respond.addBody(allocator, stream, req.hasGzipAcceptEncoding(), "text/plain", payload);
+    var builder = ResponseBuilder.init(allocator, StatusCode.Ok);
+    builder.setBody(payload, "text/plain", req.hasGzipAcceptEncoding());
+    return builder;
 }
 
-fn userAgentResponse(allocator: std.mem.Allocator, req: Request, stream: std.net.Stream) !void {
+fn userAgentResponse(allocator: std.mem.Allocator, req: Request) !ResponseBuilder {
     const userAgent = req.headers.get("user-agent");
     if (userAgent) |ua| {
-        try Respond.statusCode(allocator, stream, StatusCode.Ok);
-        try Respond.addBody(allocator, stream, req.hasGzipAcceptEncoding(), "text/plain", ua);
+        var builder = ResponseBuilder.init(allocator, StatusCode.Ok);
+        builder.setBody(ua, "text/plain", req.hasGzipAcceptEncoding());
+        return builder;
     } else {
-        return Respond.notFound(allocator, stream);
+        return ResponseBuilder.init(allocator, StatusCode.NotFound);
     }
 }
 
-fn fileResponse(allocator: std.mem.Allocator, req: Request, directory: ?[]const u8, stream: std.net.Stream) !void {
+fn fileResponse(allocator: std.mem.Allocator, req: Request, directory: ?[]const u8) !ResponseBuilder {
     const prefix = "/files/".len;
     const filename = req.path[prefix..];
     if (directory) |dir| {
         const path = try std.fs.path.join(allocator, &[_][]const u8{ dir, filename });
         std.fs.accessAbsolute(path, .{ .mode = .read_only }) catch {
-            return Respond.notFound(allocator, stream);
+            return ResponseBuilder.init(allocator, StatusCode.NotFound);
         };
         const file = try std.fs.cwd().openFile(path, .{ .mode = .read_only });
         defer file.close();
         const content = try std.fs.File.readToEndAlloc(file, allocator, 99999999);
-        try Respond.statusCode(allocator, stream, StatusCode.Ok);
-        try Respond.addBody(allocator, stream, req.hasGzipAcceptEncoding(), "application/octet-stream", content);
-    } else return Respond.notFound(allocator, stream);
+        var builder = ResponseBuilder.init(allocator, StatusCode.Ok);
+        builder.setBody(content, "application/octet-stream", req.hasGzipAcceptEncoding());
+        return builder;
+    } else return ResponseBuilder.init(allocator, StatusCode.NotFound);
 }
 
-fn writeFileResponse(allocator: std.mem.Allocator, req: Request, directory: ?[]const u8, stream: std.net.Stream) !void {
+fn writeFileResponse(allocator: std.mem.Allocator, req: Request, directory: ?[]const u8) !ResponseBuilder {
     const prefix = "/files/".len;
     const filename = req.path[prefix..];
     if (directory) |dir| {
@@ -105,9 +119,10 @@ fn writeFileResponse(allocator: std.mem.Allocator, req: Request, directory: ?[]c
             const file = try std.fs.cwd().createFile(path, .{});
             defer file.close();
             _ = try std.fs.File.writeAll(file, body);
-            try Respond.created(allocator, stream);
+
+            return ResponseBuilder.init(allocator, StatusCode.Created);
         } else {
-            try Respond.badRequest(allocator, stream);
+            return ResponseBuilder.init(allocator, StatusCode.BadRequest);
         }
-    } else try Respond.notFound(allocator, stream);
+    } else return ResponseBuilder.init(allocator, StatusCode.NotFound);
 }
