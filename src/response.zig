@@ -30,7 +30,7 @@ pub const HeaderName = enum {
     pub fn toString(self: Self) []const u8 {
         return switch (self) {
             Self.ContentType => "Content-Type",
-            Self.ContentLength => "Context-Length",
+            Self.ContentLength => "Content-Length",
             Self.ContentEncoding => "Content-Encoding",
             Self.Connection => "Connection",
         };
