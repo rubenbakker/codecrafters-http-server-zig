@@ -55,11 +55,9 @@ pub const Respond = struct {
         _ = try stream.write("\r\n");
     }
 
-    pub fn addBody(allocator: std.mem.Allocator, stream: std.net.Stream, acceptEncoding: ?[]const u8, contentType: []const u8, content: []const u8) !void {
-        if (acceptEncoding) |ae| {
-            if (std.mem.eql(u8, "gzip", ae)) {
-                try addHeader(stream, "Content-Encoding", ae);
-            }
+    pub fn addBody(allocator: std.mem.Allocator, stream: std.net.Stream, gzipEncode: bool, contentType: []const u8, content: []const u8) !void {
+        if (gzipEncode) {
+            try addHeader(stream, "Content-Encoding", "gzip");
         }
         try addHeader(stream, "Content-Type", contentType);
         try addHeader(stream, "Content-Length", try std.fmt.allocPrint(allocator, "{d}", .{content.len}));

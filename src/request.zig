@@ -21,6 +21,13 @@ pub const Request = struct {
         return self.method == method and std.mem.eql(u8, self.path, needle);
     }
 
+    pub fn hasGzipAcceptEncoding(self: Self) bool {
+        if (self.headers.get("accept-encoding")) |ae| {
+            return std.mem.containsAtLeast(u8, ae, 1, "gzip");
+        }
+        return false;
+    }
+
     pub fn parse(allocator: std.mem.Allocator, requestString: []const u8) !Request {
         const headers = try getHeaders(allocator, requestString);
         return .{ .method = getMethod(requestString), .path = getPath(requestString), .headers = headers, .body = try getBody(headers, requestString) };

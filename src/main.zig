@@ -60,16 +60,14 @@ fn echoResponse(allocator: std.mem.Allocator, req: Request, stream: std.net.Stre
     const prefix = "/echo/".len;
     const payload = req.path[prefix..];
     try Respond.statusCode(allocator, stream, StatusCode.Ok);
-    const acceptEncoding = req.headers.get("accept-encoding");
-    try Respond.addBody(allocator, stream, acceptEncoding, "text/plain", payload);
+    try Respond.addBody(allocator, stream, req.hasGzipAcceptEncoding(), "text/plain", payload);
 }
 
 fn userAgentResponse(allocator: std.mem.Allocator, req: Request, stream: std.net.Stream) !void {
     const userAgent = req.headers.get("user-agent");
     if (userAgent) |ua| {
         try Respond.statusCode(allocator, stream, StatusCode.Ok);
-        const acceptEncoding = req.headers.get("accept-encoding");
-        try Respond.addBody(allocator, stream, acceptEncoding, "text/plain", ua);
+        try Respond.addBody(allocator, stream, req.hasGzipAcceptEncoding(), "text/plain", ua);
     } else {
         return Respond.notFound(allocator, stream);
     }
@@ -87,8 +85,7 @@ fn fileResponse(allocator: std.mem.Allocator, req: Request, directory: ?[]const 
         defer file.close();
         const content = try std.fs.File.readToEndAlloc(file, allocator, 99999999);
         try Respond.statusCode(allocator, stream, StatusCode.Ok);
-        const acceptEncoding = req.headers.get("accept-encoding");
-        try Respond.addBody(allocator, stream, acceptEncoding, "application/octet-stream", content);
+        try Respond.addBody(allocator, stream, req.hasGzipAcceptEncoding(), "application/octet-stream", content);
     } else return Respond.notFound(allocator, stream);
 }
 
