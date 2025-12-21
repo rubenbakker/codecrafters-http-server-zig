@@ -39,20 +39,27 @@ fn clientLoop(client: std.net.Server.Connection, directory: ?[]const u8) !void {
     const request_buf = try allocator.alloc(u8, 512);
     defer allocator.free(request_buf);
     const stream = client.stream;
-    const bytes_read = stream.read(request_buf) catch {
-        std.debug.print("error reading from client\n", .{});
-        return;
-    };
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    const arenaAllocator = arena.allocator();
-    const req = try Request.parse(allocator, request_buf[0..bytes_read]);
-    if (req.equals(Method.GET, "/")) try Respond.ok(allocator, stream) else if (req.startsWith(Method.GET, "/echo/"))
-        try echoResponse(arenaAllocator, req, stream)
-    else if (req.startsWith(Method.GET, "/user-agent"))
-        try userAgentResponse(arenaAllocator, req, stream)
-    else if (req.startsWith(Method.GET, "/files/")) try fileResponse(arenaAllocator, req, directory, stream) else if (req.startsWith(Method.POST, "/files/")) try writeFileResponse(arenaAllocator, req, directory, stream) else try Respond.notFound(allocator, stream);
-
+    while (true) {
+        const bytes_read = stream.read(request_buf) catch {
+            std.debug.print("error reading from client\n", .{});
+            break;
+        };
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+        const arenaAllocator = arena.allocator();
+        const req = try Request.parse(allocator, request_buf[0..bytes_read]);
+        if (req.equals(Method.GET, "/")) try Respond.ok(allocator, stream) else if (req.startsWith(Method.GET, "/echo/"))
+            try echoResponse(arenaAllocator, req, stream)
+        else if (req.startsWith(Method.GET, "/user-agent"))
+            try userAgentResponse(arenaAllocator, req, stream)
+        else if (req.startsWith(Method.GET, "/files/")) try fileResponse(arenaAllocator, req, directory, stream) else if (req.startsWith(Method.POST, "/files/")) try writeFileResponse(arenaAllocator, req, directory, stream) else try Respond.notFound(allocator, stream);
+        if (req.headers.get("connection")) |value| {
+            if (std.mem.eql(u8, "close", value)) {
+                std.debug.print("{s}", .{value});
+                break;
+            }
+        }
+    }
     stream.close();
 }
 
