@@ -66,9 +66,7 @@ fn clientLoop(client: std.net.Server.Connection, directory: ?[]const u8) !void {
                 closeConnection = true;
             }
         }
-        responseBuilder.writeToStream(stream) catch {
-            std.debug.print("[WARN] Couldn't write response to client\n", .{});
-        };
+        responseBuilder.writeToStream(stream) catch {};
         if (closeConnection) {
             break;
         }
